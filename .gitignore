@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Build outputs
+site/
+build/
+dist/
+
+# Local environments and caches
+.venv/
+venv/
+.cache/
+.pytest_cache/
+.mypy_cache/
+
+# R / Quarto local state
+.Rhistory
+.RData
+.Rproj.user/
+.quarto/
+
+# Workflow runtime outputs
+.snakemake/
+logs/
+logfiles/
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+*.swp
+*.swo

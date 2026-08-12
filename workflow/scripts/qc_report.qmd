@@ -1,0 +1,464 @@
+---
+title: "tcr-seek: TCR repertoire QC report"
+subtitle: "Diversity, rarefaction, and sample-level QC"
+author:
+  - tcr-seek
+title-block-banner: "#27445C"
+title-block-logo: "tcr-seek.svg"
+format:
+  html:
+    lightbox: true
+    toc: true
+    toc-location: left
+    page-layout: full
+    theme:
+      light: cosmo
+      dark: darkly
+    html-math-method: katex
+    code-fold: true
+    highlight-style: tango
+    toc_float: true
+    number-sections: false
+    embed-resources: true
+    smooth-scroll: true
+    fig-align: "center"
+    fig-width: 10
+    fig-height: 8
+execute:
+  cache: false
+editor: source
+editor_options:
+  chunk_output_type: console
+params:
+  immdata_rds: "03_immunarch/Immdata.rds"
+  diversity_rds: "03_immunarch/diversity_summary.rds"
+  rarefaction_curve_rds: "03_immunarch/rarefaction_curve.rds"
+  qc_variables: ""
+  logo: "resources/tcr-seek.svg"
+---
+
+Diversity metrics were calculated from the immunarch object using the `vegan` package in R. The default clonotype mode is `strict`, unless the pipeline was run with a different `--clonotype-definition`. Supported presets are `gene` (V/D/J/C genes when present), `nt` (CDR3 nucleotide), `aa` (CDR3 amino acid), and `strict` (CDR3 nucleotide plus V/D/J/C genes when present). A custom comma-separated immunarch column list can also be supplied.
+
+- Richness is the number of observed clonotypes in a sample. It is intuitive, but it is highly sensitive to sequencing depth.
+- Rarefaction estimates expected richness after subsampling each sample to a shared clone/read abundance depth. The pipeline uses the minimum sample library size, calculated from total clonotype abundance, as the rarefaction depth.
+- Shannon diversity combines richness and evenness. It decreases when a small number of expanded clonotypes dominate the repertoire.
+- vegan Simpson diversity is reported as `1 - D`, where `D = sum(p_i^2)`. Larger values indicate higher diversity and less dominance by abundant clonotypes.
+- Evenness is Pielou evenness: Shannon diversity divided by `log(richness)`. It describes how evenly clone abundance is distributed across observed clonotypes.
+- Library size is the total `Clones` abundance used in the diversity matrix.
+- `RichnessPerMillion` is retained only as a rough descriptive normalization. Richness is nonlinear with depth, so dividing by reads-per-million can over-correct shallow samples and under-correct deep samples. Prefer rarefaction or depth-aware models for comparisons.
+
+```{r setup, message=FALSE, echo=FALSE, warning=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE, cache = FALSE, fig.align = "center", fig.width = 10, fig.height = 8)
+
+suppressPackageStartupMessages({
+  library(tidyverse)
+  library(DT)
+  library(ggrepel)
+  library(plotly)
+})
+
+read_qc_variables <- function(value, metadata) {
+  requested <- trimws(strsplit(value, ",", fixed = TRUE)[[1]])
+  requested <- requested[nzchar(requested)]
+  if (!length(requested)) {
+    requested <- setdiff(colnames(metadata), "Sample")
+  } else {
+    available <- colnames(metadata)
+    requested <- vapply(requested, function(variable) {
+      match <- available[tolower(available) == tolower(variable)]
+      if (length(match)) match[[1]] else NA_character_
+    }, character(1))
+    requested <- stats::na.omit(requested)
+  }
+  unique(intersect(requested, colnames(metadata)))
+}
+
+normalize_delivery_name <- function(delivery) {
+  dplyr::case_when(
+    delivery == "20260710_SH01446_0005_ASC2252557-SC3_From412" ~ "batch5",
+    TRUE ~ delivery
+  )
+}
+
+summarise_fastq_delivery <- function(delivery_table) {
+  delivery_table %>%
+    mutate(
+      fastq.delivery = normalize_delivery_name(fastq.delivery),
+      Sample = toupper(Sample)
+    ) %>%
+    filter(nzchar(Sample), nzchar(fastq.delivery)) %>%
+    distinct(Sample, fastq.delivery) %>%
+    group_by(Sample) %>%
+    summarise(fastq.delivery = paste(sort(unique(fastq.delivery)), collapse = ";"), .groups = "drop")
+}
+
+read_fastq_delivery <- function(run_dir) {
+  sample_fastq <- file.path(run_dir, "sample_fastq.tsv")
+  if (file.exists(sample_fastq)) {
+    manifest_delivery <- readr::read_tsv(sample_fastq, show_col_types = FALSE, col_types = readr::cols(.default = readr::col_character())) %>%
+      transmute(
+        Sample = sample,
+        fastq.delivery = basename(dirname(fastq))
+      ) %>%
+      summarise_fastq_delivery()
+    if (nrow(manifest_delivery)) {
+      return(manifest_delivery)
+    }
+  }
+
+  source_dir <- file.path(run_dir, "input_fastqs")
+  source_files <- list.files(source_dir, pattern = "\\.R[12]\\.fastq\\.gz\\.sources\\.txt$", full.names = TRUE)
+  if (!length(source_files)) {
+    return(tibble(Sample = character(), fastq.delivery = character()))
+  }
+
+  purrr::map_dfr(source_files, function(source_file) {
+    sample <- sub("\\.R[12]\\.fastq\\.gz\\.sources\\.txt$", "", basename(source_file))
+    source_paths <- readLines(source_file, warn = FALSE)
+    delivery_dirs <- source_paths %>%
+      trimws() %>%
+      discard(~ !nzchar(.x)) %>%
+      dirname() %>%
+      basename() %>%
+      unique() %>%
+      sort()
+    tibble(Sample = sample, fastq.delivery = delivery_dirs)
+  }) %>%
+    summarise_fastq_delivery()
+}
+
+metric_cols <- c("Richness", "Rarefaction", "Shannon", "Simpson", "Evenness", "LibrarySize", "RichnessPerMillion", "EffectiveClonotypes", "TopCloneFraction", "Top10CloneFraction")
+immdata <- readRDS(params$immdata_rds)
+diversity <- readRDS(params$diversity_rds)
+definition_comparison_rds <- file.path(dirname(params$diversity_rds), "diversity_by_clonotype_definition.rds")
+definition_comparison <- if (file.exists(definition_comparison_rds)) readRDS(definition_comparison_rds) else diversity
+rarefaction_curve <- readRDS(params$rarefaction_curve_rds)
+metadata <- as.data.frame(immdata$meta) %>% distinct(Sample, .keep_all = TRUE)
+run_dir <- dirname(dirname(normalizePath(params$immdata_rds, mustWork = TRUE)))
+metadata <- metadata %>% left_join(read_fastq_delivery(run_dir), by = "Sample")
+qc_variables <- read_qc_variables(params$qc_variables, metadata)
+metadata <- metadata %>%
+  mutate(across(all_of(qc_variables), ~ factor(dplyr::na_if(as.character(.x), ""))))
+
+diversity <- diversity %>% left_join(metadata, by = "Sample")
+definition_comparison <- definition_comparison %>% left_join(metadata, by = "Sample")
+long_diversity <- diversity %>%
+  pivot_longer(cols = all_of(intersect(metric_cols, colnames(diversity))), names_to = "Metric", values_to = "Value")
+long_definition_comparison <- definition_comparison %>%
+  pivot_longer(cols = all_of(intersect(metric_cols, colnames(definition_comparison))), names_to = "Metric", values_to = "Value")
+
+create_dt <- function(table, download_basename = "tcr_seek_qc") {
+  DT::datatable(
+    table,
+    rownames = FALSE,
+    filter = "top",
+    extensions = c("Buttons", "Scroller", "SearchBuilder", "FixedColumns"),
+    width = "100%",
+    options = list(
+      dom = "QBlrtip",
+      scrollX = TRUE,
+      scrollY = 500,
+      scroller = TRUE,
+      fixedColumns = list(leftColumns = 1),
+      buttons = list(
+        list(extend = "csv", filename = download_basename),
+        list(extend = "excel", filename = download_basename)
+      )
+    )
+  )
+}
+```
+
+## Selected Definition Summary
+
+```{r clonotype-definition-summary, results="asis"}
+selected_definition <- diversity %>%
+  distinct(ClonotypeMode, ClonotypeDefinition, RarefactionDepth)
+selected_mode <- as.character(unlist(selected_definition$ClonotypeMode))[1]
+selected_columns <- as.character(unlist(selected_definition$ClonotypeDefinition))[1]
+selected_depth <- as.character(unlist(selected_definition$RarefactionDepth))[1]
+cat("**Selected clonotype mode:** `", selected_mode, "`  \n", sep = "")
+cat("**Resolved clonotype columns:** `", selected_columns, "`  \n", sep = "")
+cat("**Rarefaction depth:** `", selected_depth, "`\n\n", sep = "")
+```
+
+```{r}
+summary_table <- definition_comparison %>%
+  arrange(Sample, factor(ClonotypeMode, levels = c("gene", "nt", "aa", "strict", "custom"))) %>%
+  mutate(
+    ClonotypeMode = factor(ClonotypeMode, levels = c("gene", "nt", "aa", "strict", "custom")),
+    ClonotypeDefinition = factor(ClonotypeDefinition, levels = unique(ClonotypeDefinition))
+  ) %>%
+  select(any_of(c("Sample", "ClonotypeMode", "ClonotypeDefinition", "RarefactionDepth", metric_cols, qc_variables)))
+create_dt(summary_table, "tcr_seek_diversity_summary")
+```
+
+## Clonotype Definition Comparison
+
+```{r}
+comparison_metrics <- c("Richness", "Rarefaction", "Shannon", "Simpson", "Evenness", "EffectiveClonotypes", "TopCloneFraction", "Top10CloneFraction")
+long_definition_comparison %>%
+  filter(Metric %in% comparison_metrics) %>%
+  ggplot(aes(x = ClonotypeMode, y = Value, color = ClonotypeMode)) +
+  geom_point(position = position_jitter(width = 0.12, height = 0), alpha = 0.7, size = 1.8) +
+  geom_line(aes(group = Sample), color = "grey70", alpha = 0.45) +
+  facet_wrap(~Metric, scales = "free_y") +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 35, hjust = 1), legend.position = "none") +
+  labs(x = "Clonotype definition mode", y = "Value")
+```
+
+```{r}
+long_diversity %>%
+  ggplot(aes(x = Metric, y = Value)) +
+  geom_boxplot(outlier.shape = NA, fill = "grey85") +
+  geom_jitter(width = 0.2, alpha = 0.45, size = 1.4) +
+  facet_wrap(~Metric, scales = "free_y") +
+  theme_bw() +
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank()) +
+  labs(x = NULL, y = "Value")
+```
+
+## Rarefaction Curves
+
+```{r rarefaction-data}
+rare_curve_data <- lapply(names(rarefaction_curve), function(sample) {
+  data.frame(rarefaction_curve[[sample]]) %>%
+    stats::setNames("Clonotypes") %>%
+    tibble::rownames_to_column("Depth") %>%
+    mutate(
+      Depth = as.numeric(gsub("N", "", Depth)),
+      Sample = sample
+    )
+}) %>% bind_rows() %>% left_join(metadata, by = "Sample")
+
+sample_label_data <- rare_curve_data %>%
+  group_by(Sample) %>%
+  summarise(max_clonotypes = max(Clonotypes), max_depth = max(Depth), .groups = "drop")
+
+rarefaction_depth <- min(vapply(rarefaction_curve, function(x) max(as.numeric(gsub("N", "", names(x)))), numeric(1)))
+
+plot_grouped_rarefaction <- function(plot_data, variable, log_depth = FALSE) {
+  variable_data <- plot_data %>%
+    mutate(.qc_group = as.character(.data[[variable]])) %>%
+    filter(!is.na(.qc_group), .qc_group != "", !is.na(Clonotypes), !is.na(Depth))
+  if (log_depth) {
+    variable_data <- variable_data %>% filter(Depth > 0)
+  }
+  if (!nrow(variable_data)) {
+    return(NULL)
+  }
+
+  average_data <- variable_data %>%
+    group_by(Depth, .qc_group) %>%
+    summarise(Clonotypes = mean(Clonotypes, na.rm = TRUE), .groups = "drop")
+
+  if (log_depth) {
+    ggplot(variable_data, aes(x = log10(Depth), y = Clonotypes, color = .qc_group)) +
+      geom_line(aes(group = Sample), alpha = 0.18, linewidth = 0.35) +
+      geom_smooth(
+        data = average_data,
+        aes(x = log10(Depth), y = Clonotypes, color = .qc_group, group = .qc_group),
+        method = "loess",
+        formula = y ~ x,
+        se = FALSE,
+        linewidth = 1.35,
+        span = 0.75
+      ) +
+      geom_vline(xintercept = log10(rarefaction_depth), linetype = "dashed") +
+      theme_bw() +
+      labs(x = "log10 clone/read abundance depth", y = "Expected clonotypes", color = variable)
+  } else {
+    ggplot(variable_data, aes(x = Depth, y = Clonotypes, color = .qc_group)) +
+      geom_line(aes(group = Sample), alpha = 0.18, linewidth = 0.35) +
+      geom_smooth(
+        data = average_data,
+        aes(x = Depth, y = Clonotypes, color = .qc_group, group = .qc_group),
+        method = "loess",
+        formula = y ~ x,
+        se = FALSE,
+        linewidth = 1.35,
+        span = 0.75
+      ) +
+      geom_vline(xintercept = rarefaction_depth, linetype = "dashed") +
+      theme_bw() +
+      labs(x = "Clone/read abundance depth", y = "Expected clonotypes", color = variable)
+  }
+}
+
+```
+
+::: {.panel-tabset}
+
+### Sample
+
+```{r}
+ggplot(rare_curve_data, aes(x = Depth, y = Clonotypes, group = Sample)) +
+  geom_line(alpha = 0.5) +
+  geom_vline(xintercept = rarefaction_depth, linetype = "dashed") +
+  ggrepel::geom_text_repel(data = sample_label_data, inherit.aes = FALSE, aes(x = max_depth, y = max_clonotypes, label = Sample), size = 3) +
+  theme_bw() +
+  labs(x = "Clone/read abundance depth", y = "Expected clonotypes")
+```
+
+### Sample Log
+
+```{r}
+ggplot(rare_curve_data %>% filter(Depth > 0), aes(x = log10(Depth), y = Clonotypes, group = Sample)) +
+  geom_line(alpha = 0.5) +
+  geom_vline(xintercept = log10(rarefaction_depth), linetype = "dashed") +
+  theme_bw() +
+  labs(x = "log10 clone/read abundance depth", y = "Expected clonotypes")
+```
+
+### Interactive
+
+```{r}
+p <- ggplot(rare_curve_data, aes(x = Depth, y = Clonotypes, group = Sample, text = Sample)) +
+  geom_line(alpha = 0.5) +
+  geom_vline(xintercept = rarefaction_depth, linetype = "dashed") +
+  theme_bw() +
+  labs(x = "Clone/read abundance depth", y = "Expected clonotypes")
+plotly::ggplotly(p, tooltip = c("text", "x", "y"))
+```
+
+### QC Variables
+
+```{r rarefaction-qc-variable-tabs, results="asis"}
+if (length(qc_variables)) {
+  cat("::: {.panel-tabset}
+
+")
+  for (variable in qc_variables) {
+    cat("#### ", variable, "
+
+", sep = "")
+    cat(":::: {.panel-tabset}
+
+")
+
+    cat("##### Average
+
+")
+    grouped_plot <- plot_grouped_rarefaction(rare_curve_data, variable, log_depth = FALSE)
+    if (is.null(grouped_plot)) {
+      cat("No non-missing values available for this QC variable.
+
+")
+    } else {
+      print(grouped_plot)
+      cat("
+
+")
+    }
+
+    cat("##### Average Log
+
+")
+    grouped_log_plot <- plot_grouped_rarefaction(rare_curve_data, variable, log_depth = TRUE)
+    if (is.null(grouped_log_plot)) {
+      cat("No non-missing values available for this QC variable.
+
+")
+    } else {
+      print(grouped_log_plot)
+      cat("
+
+")
+    }
+
+    cat("::::
+
+")
+  }
+  cat(":::
+
+")
+} else {
+  cat("No QC variables were supplied or found in sample metadata.
+")
+}
+```
+
+:::
+
+## QC Variables
+
+```{r qc-variable-note, results="asis"}
+if (!length(qc_variables)) {
+  cat("No QC variables were supplied or found in sample metadata. Add `--sample-info` and `--qc-variables` to group diversity metrics by sample annotations.\n")
+}
+```
+
+```{r qc-variable-tabs, results="asis"}
+if (length(qc_variables)) {
+  definition_levels <- c("gene", "nt", "aa", "strict", "custom")
+  available_definitions <- intersect(definition_levels, unique(as.character(definition_comparison$ClonotypeMode)))
+  cat("::: {.panel-tabset}
+
+")
+  for (variable in qc_variables) {
+    cat("### ", variable, "
+
+", sep = "")
+    cat("::: {.panel-tabset}
+
+")
+    for (definition_mode in available_definitions) {
+      definition_label <- definition_comparison %>%
+        filter(ClonotypeMode == definition_mode) %>%
+        distinct(ClonotypeDefinition) %>%
+        pull(ClonotypeDefinition) %>%
+        as.character() %>%
+        .[1]
+      cat("#### ", definition_mode, "
+
+", sep = "")
+      cat("`", definition_label, "`
+
+", sep = "")
+
+      plot_data <- long_definition_comparison %>%
+        filter(ClonotypeMode == definition_mode, !is.na(.data[[variable]]), .data[[variable]] != "")
+      if (!nrow(plot_data)) {
+        cat("No non-missing values available for this variable and clonotype definition.
+
+")
+        next
+      }
+      print(
+        ggplot(plot_data, aes(x = .data[[variable]], y = Value, fill = .data[[variable]])) +
+          geom_boxplot(outlier.shape = NA, alpha = 0.75) +
+          geom_jitter(width = 0.18, alpha = 0.45, size = 1.3) +
+          facet_wrap(~Metric, scales = "free_y") +
+          theme_bw() +
+          theme(axis.text.x = element_text(angle = 45, hjust = 1), legend.position = "none") +
+          labs(x = variable, y = "Value")
+      )
+      cat("
+
+")
+
+      numeric_metrics <- definition_comparison %>%
+        filter(ClonotypeMode == definition_mode) %>%
+        select(any_of(metric_cols))
+      if (ncol(numeric_metrics)) {
+        tab <- definition_comparison %>%
+          filter(ClonotypeMode == definition_mode) %>%
+          group_by(.data[[variable]]) %>%
+          summarise(across(all_of(colnames(numeric_metrics)), list(median = ~median(.x, na.rm = TRUE), mean = ~mean(.x, na.rm = TRUE)), .names = "{.col}_{.fn}"), n = n(), .groups = "drop") %>%
+          rename(!!variable := 1)
+        print(create_dt(tab, paste0("tcr_seek_qc_", variable, "_", definition_mode)))
+        cat("
+
+")
+      }
+    }
+    cat(":::
+
+")
+  }
+  cat(":::
+")
+}
+```

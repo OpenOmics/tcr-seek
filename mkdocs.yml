@@ -1,0 +1,85 @@
+# Project Information
+site_name: tcr-seek
+site_author: NIAMS IDSS Bioinformatics
+site_description: >-
+  Reproducible bulk TCR-seq processing with pRESTO, Change-O/IgBLAST, and immunarch.
+
+# Repository
+repo_name: tcr-seek
+repo_url: https://github.com/NIAMS-IDSS/tcr-seek
+edit_uri: edit/main/docs/
+
+# Extra
+extra_css:
+  - css/extra.css
+exclude_docs: |
+  README.md
+  **/README.md
+
+# Copyright
+copyright: Copyright &copy; 2026 NIAMS IDSS
+
+# Configuration
+theme:
+  name: material
+  features:
+    - navigation.tabs
+    - navigation.top
+    - toc.integrate
+  palette:
+    - scheme: default
+      toggle:
+        icon: material/lightbulb-on
+        name: Switch to dark mode
+    - scheme: slate
+      toggle:
+        icon: material/weather-night
+        name: Switch to light mode
+  logo: assets/icons/tcr-seek.svg
+  favicon: assets/icons/tcr-seek.svg
+
+# Plugins
+plugins:
+  - search
+
+# Customization
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/NIAMS-IDSS/tcr-seek
+  version:
+    provider: mike
+
+# Extensions
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - markdown.extensions.md_in_html
+  - markdown.extensions.attr_list
+  - markdown.extensions.def_list
+  - markdown.extensions.footnotes
+  - markdown.extensions.meta
+  - markdown.extensions.toc:
+      permalink: true
+  - pymdownx.highlight
+  - pymdownx.inlinehilite
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+
+# Page Tree
+nav:
+  - About: index.md
+  - Commands:
+    - tcr-seek run: usage/run.md
+    - tcr-seek cache: usage/cache.md
+    - Slurm mode: usage/slurm.md
+    - tcr-seek unlock: usage/unlock.md
+  - Methods:
+    - Workflow: methods/workflow.md
+    - FASTQ naming: methods/fastq.md
+  - FAQ:
+    - General Questions: faq/questions.md
+  - License: license.md

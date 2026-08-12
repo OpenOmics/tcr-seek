@@ -1,0 +1,10 @@
+title: "tcr-seek MultiQC report"
+subtitle: "Bulk TCR-seq processing and repertoire QC"
+
+module_order:
+  - fastp
+  - tcr_seek
+
+sp:
+  tcr_seek/tcr_seek_multiqc:
+    fn: "tcr_seek_multiqc.tsv"

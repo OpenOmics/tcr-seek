@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "multiqc-tcr-seek"
+version = "0.1.0"
+description = "MultiQC plugin for tcr-seek bulk TCR-seq reports"
+requires-python = ">=3.9"
+dependencies = ["multiqc"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+
+[project.entry-points."multiqc.modules.v1"]
+tcr_seek = "multiqc_tcr_seek.modules.tcr_seek:MultiqcModule"
