@@ -5,8 +5,8 @@ site_description: >-
   Reproducible bulk TCR-seq processing with pRESTO, Change-O/IgBLAST, and immunarch.
 
 # Repository
-repo_name: tcr-seek
-repo_url: https://github.com/NIAMS-IDSS/tcr-seek
+repo_name: OpenOmics/tcr-seek
+repo_url: https://github.com/OpenOmics/tcr-seek
 edit_uri: edit/main/docs/
 
 # Extra
@@ -46,7 +46,7 @@ plugins:
 extra:
   social:
     - icon: fontawesome/brands/github
-      link: https://github.com/NIAMS-IDSS/tcr-seek
+      link: https://github.com/OpenOmics/tcr-seek
   version:
     provider: mike
 

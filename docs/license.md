@@ -1,3 +1,5 @@
 # License
 
-`tcr-seek` is currently maintained as a project pipeline. Add the repository license text here before public release.
+`tcr-seek` is distributed under the MIT License.
+
+See the repository [`LICENSE`](https://github.com/OpenOmics/tcr-seek/blob/main/LICENSE) file for the full license text.

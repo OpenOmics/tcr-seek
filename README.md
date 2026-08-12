@@ -1,5 +1,14 @@
 # tcr-seek
 
+[![Docs](https://github.com/OpenOmics/tcr-seek/actions/workflows/docs.yml/badge.svg)](https://github.com/OpenOmics/tcr-seek/actions/workflows/docs.yml)
+[![Tests](https://github.com/OpenOmics/tcr-seek/actions/workflows/tests.yml/badge.svg)](https://github.com/OpenOmics/tcr-seek/actions/workflows/tests.yml)
+[![GitHub Pages](https://img.shields.io/badge/docs-GitHub%20Pages-blue)](https://openomics.github.io/tcr-seek/)
+[![Issues](https://img.shields.io/github/issues/OpenOmics/tcr-seek)](https://github.com/OpenOmics/tcr-seek/issues)
+[![License](https://img.shields.io/github/license/OpenOmics/tcr-seek)](https://github.com/OpenOmics/tcr-seek/blob/main/LICENSE)
+[![Docker Pulls](https://img.shields.io/docker/pulls/pauls85/tcrseq-rnaseq)](https://hub.docker.com/r/pauls85/tcrseq-rnaseq)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.21908454.svg)](https://doi.org/10.5281/zenodo.21908454)
+
+
 `tcr-seek` is a reusable bulk TCR-seq pipeline skeleton modeled after the
 command-oriented layout of OpenOmics `cell-seek`. It accepts paired FASTQ files,
 runs the pRESTO processing method used in the existing `01_run` scripts, runs

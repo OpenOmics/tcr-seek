@@ -1,0 +1,17 @@
+cff-version: 1.2.0
+message: "If you use tcr-seek, please cite it using the metadata from this file."
+title: "tcr-seek: reproducible bulk TCR-seq processing with pRESTO, Change-O/IgBLAST, and immunarch"
+type: software
+authors:
+  - name: "NIAMS IDSS Bioinformatics"
+  - name: "OpenOmics contributors"
+repository-code: "https://github.com/OpenOmics/tcr-seek"
+url: "https://openomics.github.io/tcr-seek/"
+license: MIT
+keywords:
+  - tcr-seq
+  - repertoire-sequencing
+  - snakemake
+  - presto
+  - change-o
+  - immunarch
