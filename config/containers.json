@@ -1,0 +1,7 @@
+{
+  "name": "tcrseq-rnaseq",
+  "version": "1.3",
+  "sif": "tcrseq-rnaseq_1.3.sif",
+  "uri": "docker://pauls85/tcrseq-rnaseq:1.3",
+  "description": "Bulk TCR-seq runtime with Immcantation, R/immunarch, Quarto, fastp, FastQC, MultiQC, Snakemake helpers, and MiXCR utilities."
+}

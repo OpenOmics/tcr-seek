@@ -1,0 +1,45 @@
+import os
+
+configfile: "config.json"
+
+SAMPLES = sorted(config["samples"].keys())
+OUTDIR = config["paths"]["output"]
+MIXCR_LICENSE_FILE = config["paths"].get("mixcr_license_file", "")
+WORKER_CONTAINER = config["paths"].get("container_image", "")
+RUN_RAREFACTION = str(config["params"].get("run_rarefaction", True)).lower() in ("true", "1", "yes", "y")
+CLEANUP_INTERMEDIATES = str(config["params"].get("cleanup_intermediates", False)).lower() in ("true", "1", "yes", "y")
+RUN_DIR = "01_run"
+CHANGEO_DIR = "02_changeo"
+IMMUNARCH_DIR = "03_immunarch"
+MULTIQC_DIR = "04_multiqc"
+if MIXCR_LICENSE_FILE:
+    os.environ["MI_LICENSE_FILE"] = MIXCR_LICENSE_FILE
+
+include: "rules/tcr.smk"
+include: "rules/immunarch.smk"
+include: "rules/cleanup.smk"
+
+QC_TARGETS = [
+    expand("00_fastqc/{sample}/{sample}.raw_fastq_qc.done", sample=SAMPLES),
+    f"{MULTIQC_DIR}/multiqc_report.html",
+]
+
+CORE_FINAL_TARGETS = [
+    expand(f"{CHANGEO_DIR}/{{sample}}/{{sample}}.al2_db-pass.tsv", sample=SAMPLES),
+    f"{IMMUNARCH_DIR}/Immdata.rds",
+    f"{IMMUNARCH_DIR}/ImmunarchInput/metadata.txt",
+    f"{IMMUNARCH_DIR}/diversity_summary.rds",
+    f"{IMMUNARCH_DIR}/rarefaction.rds",
+    f"{IMMUNARCH_DIR}/rarefaction_curve.rds",
+    f"{IMMUNARCH_DIR}/qc_report.html",
+]
+
+if CLEANUP_INTERMEDIATES:
+    RUN_TARGETS = QC_TARGETS + CORE_FINAL_TARGETS + ["cleanup/tcr_seek_cleanup.done"]
+else:
+    RUN_TARGETS = QC_TARGETS + [
+        expand(f"{RUN_DIR}/{{sample}}/{{sample}}.uniqC_atleast-2.fastq", sample=SAMPLES),
+    ] + CORE_FINAL_TARGETS
+
+rule all:
+    input: RUN_TARGETS
