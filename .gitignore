@@ -31,3 +31,7 @@ logfiles/
 Thumbs.db
 *.swp
 *.swo
+
+# Local license files
+mi.license
+config/mi.license
