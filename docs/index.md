@@ -15,6 +15,25 @@ runs the pRESTO processing method used in the existing `01_run` scripts, runs
 Change-O/IgBLAST as in `02_changeo`, and creates an immunarch object from the
 resulting AIRR tables.
 
+## Pipeline DAG
+
+```mermaid
+flowchart TD
+    A[Paired bulk TCR FASTQs] --> B[Stage inputs\ninput_fastqs/*.R1/R2.fastq.gz]
+    B --> C[Raw FASTQ QC\nfastp + optional FastQC]
+    B --> D[pRESTO read processing\nquality filter, primer mask, pair, consensus, assemble, collapse]
+    D --> E[CONSCOUNT >= 2 FASTQ\n01_run/*.uniqC_atleast-2.fastq]
+    E --> F[Change-O / IgBLAST assignment\n02_changeo/*_db-pass.tsv]
+    F --> G[immunarch import\n03_immunarch/Immdata.rds]
+    G --> H[Diversity metrics\nrichness, Shannon, Simpson, evenness, rarefaction]
+    G --> I[Quarto QC report\n03_immunarch/qc_report.html]
+    H --> I
+    C --> J[MultiQC report\n04_multiqc/multiqc_report.html]
+    D --> J
+    F --> J
+    H --> J
+```
+
 ## Method implemented in this directory
 
 The pipeline performs six stages:
