@@ -9,7 +9,7 @@
   [![Issues](https://img.shields.io/github/issues/OpenOmics/tcr-seek)](https://github.com/OpenOmics/tcr-seek/issues)
   [![License](https://img.shields.io/github/license/OpenOmics/tcr-seek)](https://github.com/OpenOmics/tcr-seek/blob/main/LICENSE)</br>
   [![Docker Pulls](https://img.shields.io/docker/pulls/pauls85/tcrseq-rnaseq)](https://hub.docker.com/r/pauls85/tcrseq-rnaseq)
-  [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.21908454.svg)](https://doi.org/10.5281/zenodo.21908454)
+  [![DOI](https://img.shields.io/badge/DOI-10.5281%2Fzenodo.21908453-1682D4.svg)](https://doi.org/10.5281/zenodo.21908453)
   
   <i>
     This is the home of the pipeline, tcr-seek. Its long-term goals: to perform bulk TCR-seq processing, repertoire analysis, and integrated quality control!
